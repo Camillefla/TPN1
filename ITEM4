@@ -1,0 +1,84 @@
+close all; clear all; clc;
+
+% Parámetros del motor (valores dados)
+Laa = 366e-6;   % Inductancia (H)
+J = 5e-9;      % Inercia (kg.m^2)
+Ra = 55.6;     % Resistencia (Ohm)
+Bm = 0;         % Coeficiente de fricción (N.m.s)
+Ki = 6.49e-3;  % Constante de torque (N.m/A)
+Km = 6.53e-3;  % Constante de fuerza contraelectromotriz (V.s/rad)
+Va = 12;       % Tensión de alimentación (V)
+
+% Definición de las matrices del sistema (modelo en espacio de estados)
+A = [-Ra/Laa  -Km/Laa  0    ;    Ki/J  -Bm/J   0   ;   0   1   0]; % Matriz de estado A
+B = [  1/Laa      0         ;      0    -1/J       ;   0   0    ]; % Matriz de entrada B
+C = [  0    1     0]; % Matriz de salida C (velocidad angular)
+D = [  0    0  ]; % Matriz de transmisión directa D
+
+% Encontrar los polos (autovalores de A)
+autovalores_A = abs(real(eig(A))); % Autovalores (parte real)
+
+% Sin considerar el cero (evitar divisiones por cero)
+mask = autovalores_A > 0; % Máscara lógica para valores > 0
+autovalores_A_0 = autovalores_A(mask); % Autovalores sin el cero
+
+% Polo más cercano y lejano (para estimar tiempos)
+polo_cercano = min(autovalores_A_0); % Polo cercano al origen
+polo_lejano = max(autovalores_A_0); % Polo lejano del origen
+
+% Cálculo del paso de integración (basado en el polo lejano)
+h = -log(0.95)/polo_lejano; % Estimación del paso
+h = h/3; % Paso de integración (más pequeño para precisión)
+
+% Cálculo del tiempo de simulación (basado en el polo cercano)
+t_l = -log(0.05)/polo_cercano; % Estimación del tiempo
+t_l = t_l*3; % Tiempo de simulación (múltiplo de la cte. de tiempo)
+
+% Tiempo de simulación y vector de tiempo
+np1 = round(t_l/h)+1; % Número de puntos de simulación
+t = linspace(0,t_l,np1); % Vector de tiempo
+
+% Inicialización de variables
+ia = zeros(1, np1); % Corriente de armadura
+w = zeros(1, np1); % Velocidad angular
+tita = zeros(1, np1); % Posición angular
+
+% Condiciones iniciales
+ia(1) = 0;
+w(1) = 0;
+tita(1) = 0;
+
+% Torque de carga (constante para este caso)
+TL = 1e-3; % Valor del torque
+tL = TL*ones(size(t)); % Vector de torque
+
+% Simulación (integración de Euler)
+for i = 1:np1-1
+  % Ecuaciones de estado (derivadas)
+  di_dt = -(Ra/Laa)*ia(i) - (Km/Laa)*w(i) + Va/Laa; % Derivada de la corriente
+  dw_dt = (Ki/J)*ia(i) - (Bm/J)*w(i) - tL(i)/J; % Derivada de la velocidad
+  dtheta_dt = w(i); % Derivada de la posición
+
+  % Integración (Euler)
+  ia(i+1) = ia(i) + h*di_dt; % Actualización de la corriente
+  w(i+1) = w(i) + h*dw_dt; % Actualización de la velocidad
+  tita(i+1) = tita(i) + h*dtheta_dt; % Actualización de la posición
+end
+
+% Gráficas
+figure(1);
+subplot(4,1,1)
+plot(t,w,'green'); grid on; 
+title('Veloc angular [Rad/seg]');
+
+subplot(4,1,2)
+plot(t,ia,'blue'); grid on; 
+title('Corriente de armadura');
+
+subplot(4,1,3)
+plot(t,tita,'red'); grid on; 
+title('Posicion angular');
+
+subplot(4,1,4)
+plot(t,tL,'yellow'); grid on; 
+title('Entrada Torque ');
