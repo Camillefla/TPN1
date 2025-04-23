@@ -1,0 +1,108 @@
+% Ítem 2 - Análisis de circuito RLC y método de Chen
+close all; clear all; clc;
+
+%% 1. Carga de datos experimentales
+[data, txt] = xlsread('Curvas_Medidas_RLC_2025.xls', 1); % Cargar datos medidos
+
+% Separación de variables medidas (ajustar índices según estructura real del archivo)
+t_meas = data(:,1);    % Vector de tiempo
+Vc_meas = data(:,3);   % Tensión en el capacitor (datos reales)
+Ve_meas = data(:,4);   % Tensión de entrada (para referencia)
+
+%% 2. Visualización de datos experimentales
+figure;
+plot(t_meas, Vc_meas, 'b', 'LineWidth', 1.5);
+grid on;
+xlabel('Tiempo (s)');
+ylabel('Tensión en capacitor (V)');
+title('Respuesta real del circuito RLC');
+
+%% 3. Modelado del sistema RLC
+% Parámetros del circuito (valores teóricos/modificados)
+R1 = 219;          % Resistencia [Ω]
+L1 = 4.94776e-4;   % Inductancia [H]
+C1 = 2.17702e-6;   % Capacitancia [F]
+
+% Representación en espacio de estados
+A1 = [-R1/L1 -1/L1; 1/C1 0];          % Matriz de estado
+B1 = [1/L1; 0];         % Matriz de entrada
+C_mat1 = [0 1];         % Matriz de salida (medimos Vc)
+D1 = 0;                 % Matriz de transmisión directa
+sys1 = ss(A1, B1, C_mat1, D1); % Creación del sistema
+
+%% 4. Ajuste de ventana temporal (eliminación delay inicial)
+t0 = 0.01; % Tiempo de retardo inicial
+indices = find(t_meas >= 0.01 & t_meas <= 0.025); % Ventana de interés
+t_ajustado = t_meas(indices) - t0; % Tiempo ajustado
+Vc_ajustado = Vc_meas(indices);    % Datos de tensión ajustados
+
+%% 5. Simulación con modelo teórico
+Vin_sim = 12*ones(size(t_ajustado)); % Entrada escalón 12V
+Vc_sim = lsim(sys1, Vin_sim, t_ajustado); % Simulación
+
+% Graficación comparativa
+figure;
+plot(t_ajustado, Vc_ajustado, 'k', 'LineWidth', 1.5); hold on;
+plot(t_ajustado, Vc_sim, 'b--', 'LineWidth', 1.5);
+plot(t_ajustado, Vin_sim, 'r:', 'LineWidth', 1.2);
+grid on;
+xlabel('Tiempo (s)');
+ylabel('Tensión (V)');
+legend('Medición real', 'Modelo teórico', 'Entrada 12V');
+title('Comparación modelo teórico vs real');
+
+%% 6. Identificación con método de Chen
+t_paso = 2.2e-4; % Intervalo entre puntos para método Chen
+
+% Selección de 3 puntos en la zona transitoria
+[~, idx1] = min(abs(t_paso + t0 - t_meas));
+t1 = t_meas(idx1) - t0;  % Tiempo ajustado
+y1 = Vc_meas(idx1);      % Valor tensión
+
+[~, idx2] = min(abs(2*t_paso + t0 - t_meas));
+t2 = t_meas(idx2) - t0;
+y2 = Vc_meas(idx2);
+
+[~, idx3] = min(abs(3*t_paso + t0 - t_meas));
+t3 = t_meas(idx3) - t0;
+y3 = Vc_meas(idx3);
+
+% Punto de régimen permanente para ganancia
+[~, idx4] = min(abs(0.025 + t0 - t_meas));
+y4 = Vc_meas(idx4);
+
+% Cálculo de parámetros Chen (normalizados)
+K = 1; % Ganancia unitaria (método requiere normalización)
+k1 = (y1/y4) - 1;
+k2 = (y2/y4) - 1;
+k3 = (y3/y4) - 1;
+
+% Coeficientes del sistema
+b = 4*k1^3*k3 - 3*k1^2*k2^2 - 4*k2^3 + k3^2 + 6*k1*k2*k3;
+alfa1 = (k1*k2 + k3 - sqrt(b))/(2*(k1^2 + k2));
+alfa2 = (k1*k2 + k3 + sqrt(b))/(2*(k1^2 + k2));
+beta = (2*k1^3 + 3*k1*k2 + k3 - sqrt(b))/sqrt(b);
+
+% Constantes de tiempo
+T1 = -t1/log(alfa1);
+T2 = -t1/log(alfa2);
+T3 = beta*(T1 - T2) + T1;
+
+% Función de transferencia identificada
+s = tf('s');
+G_chen = K/((T1*s + 1)*(T2*s + 1)); % Forma estándar
+
+%% 7. Validación del modelo identificado
+Vc_chen = lsim(12*G_chen, ones(size(t_ajustado)), t_ajustado); % Escalón 12V
+
+% Graficación comparativa final
+figure;
+plot(t_ajustado, Vc_ajustado, 'k', 'LineWidth', 2, 'DisplayName', 'Datos reales');
+hold on;
+plot(t_ajustado, Vc_sim, 'b--', 'LineWidth', 1.5, 'DisplayName', 'Modelo teórico');
+plot(t_ajustado, Vc_chen, 'r-.', 'LineWidth', 1.5, 'DisplayName', 'Modelo Chen');
+grid on;
+xlabel('Tiempo (s)');
+ylabel('Tensión en capacitor (V)');
+title('Comparación de modelos');
+legend('Location', 'southeast');
