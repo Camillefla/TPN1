@@ -1,0 +1,52 @@
+close all; clear all; clc;
+
+% Carga de datos experimentales
+[data, txt] = xlsread('Curvas_Medidas_RLC_2025.xls', 1); % Carga los datos del Excel
+
+% Variables medidas (ajuste por retardo inicial)
+t_meas = data(1001:end,1);    % Vector de tiempo
+I_meas = data(1001:end,2);    % Corriente medida
+Ve_meas = data(1001:end,4);   % Tensión de entrada
+
+% Tiempo de muestreo del Excel (constante)
+t_m = 1e-5; % [s]
+
+% Parámetros del circuito (obtenidos previamente)
+R = 220;          % Resistencia [Ω]
+L = 1.9591e-3;    % Inductancia [H]
+C = 2.2306e-6;    % Capacitancia [F]
+
+% Representación en espacio de estados
+A = [-R/L -1/L; 1/C 0];  % Matriz de estado
+B = [1/L; 0];              % Matriz de entrada
+C_mat = [R 0];           % Matriz de salida (tensión en resistencia)
+D = 0;
+
+% Obtención de la función de transferencia
+[num, den] = ss2tf(A, B, C_mat, D); % Coeficientes numerador y denominador
+G = tf(num, den);                   % Función de transferencia
+
+% Punto de operación (condiciones iniciales)
+x0 = [0 0]';
+
+% Inicialización de variables de estado
+I(1) = 0;
+VC(1) = 0;
+x = [I(1) VC(1)]';
+
+% Simulación (integración de Euler)
+for i = 1:length(t_meas)-1  % Itera sobre los datos medidos
+  x_punto = A*(x - x0) + B*Ve_meas(i); % Ecuación de estado
+  x = x + x_punto*t_m;                % Integración con paso t_m
+
+  I(i+1) = x(1); % Corriente simulada
+end
+
+% Comparación gráfica (medición vs simulación)
+figure;
+plot(t_meas, I_meas, 'b-', t_meas, I, "r-"); % Grafica ambas corrientes
+xlabel('Tiempo (s)');
+ylabel('Corriente (A)');
+title('Comparación de las respuestas de la corriente'); % Título del gráfico
+legend('Valor medido', 'Respuesta del Modelo'); % Leyenda
+grid on;
