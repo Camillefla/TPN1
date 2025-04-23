@@ -1,0 +1,168 @@
+close all; clear all; clc;
+
+% ITEM 5 - Identificación del modelo del motor
+
+% Cargar los datos experimentales
+data = xlsread('Curvas_Medidas_Motor_2025_v.xls', 1); % Hoja 1 (datos)
+
+% Extraer las variables medidas
+tt = data(:,1); % Tiempo (s)
+w = data(:,2);  % Velocidad angular (rad/s)
+ia = data(:,3); % Corriente de armadura (A)
+Va = data(:,4); % Tensión de entrada (V)
+Tl = data(:,5); % Torque (Nm)
+
+% Gráficos de los datos cargados
+figure(2);
+
+subplot(4,1,1)
+plot(tt,w,'k'); 
+title('Velocidad angular del excel');
+xlabel('Tiempo (s)');
+ylabel('Velocidad (rad/s)');
+grid on; hold on;
+
+subplot(4,1,2)
+plot(tt,ia,'blue'); 
+title('Corriente de armadura del excel');
+xlabel('Tiempo (s)');
+ylabel('Corriente (A)');
+grid on; hold on;
+
+subplot(4,1,3)
+plot(tt,Va,'g'); 
+title('Tensión de entrada del excel');
+xlabel('Tiempo (s)');
+ylabel('Tensión (V)');
+grid on; hold on;
+
+subplot(4,1,4)
+plot(tt,Tl,'red'); 
+title('Torque del excel');
+xlabel('Tiempo (s)');
+ylabel('Torque (Nm)');
+grid on; hold on;
+
+% Ajuste por retardo inicial
+t0 = 0.1; % Tiempo de retardo (s)
+indice = find(tt >= 0.1 & tt <= 0.7); % Índices para la ventana temporal
+t_ajustado = tt(indice) - t0; % Tiempo ajustado
+w_ajustado = w(indice); % Velocidad angular ajustada
+
+% Método de Chen (identificación de la función de transferencia)
+% FT = K*(T3*s + 1)/((T1*s + 1)*(T2*s + 1))
+
+% Tiempo entre los puntos para el método de Chen
+t_paso = 0.01; % (s)
+
+% Selección de 3 puntos en la parte creciente de la curva de velocidad
+[~, lugar] = min(abs(t_paso + t0 - tt)); % Encuentra el índice más cercano
+y1_w = w(lugar); % Valor de la velocidad en t1
+t1_w = tt(lugar) - t0; % Tiempo ajustado t1
+
+[~, lugar] = min(abs(2*t1_w + t0 - tt));
+y2_w = w(lugar);
+t2_w = tt(lugar) - t0;
+
+[~, lugar] = min(abs(3*t1_w + t0 - tt));
+y3_w = w(lugar);
+t3_w = tt(lugar) - t0;
+
+% Normalización (punto en estado de régimen)
+t4_w = 0.693; % Tiempo en estado de régimen
+y4_w = 7.625; % Valor en estado de régimen
+K_w = y4_w/2; % Ganancia normalizada
+
+% Cálculo de k1, k2, k3 (parámetros intermedios)
+k1 = (y1_w/2)/K_w-1;
+k2 = (y2_w/2)/K_w-1;
+k3 = (y3_w/2)/K_w-1;
+
+% Cálculo del discriminante (b)
+b = ((4)*(k1^3)*(k3))-((3)*(k1^2)*(k2^2))-((4)*(k2^3))+(k3^2)+((6)*(k1)*(k2)*(k3));
+
+% Cálculo de alfa1 y alfa2 (raíces)
+alfa1 = ((k1*k2)+(k3)-(sqrt(b)))/(2*((k1^2)+(k2)));
+alfa2 = ((k1*k2)+(k3)+(sqrt(b)))/(2*((k1^2)+(k2)));
+
+% Cálculo de Beta
+Beta = (2*(k1^3)+3*k1*k2+k3-sqrt(b))/sqrt(b);
+
+% Cálculo de las constantes de tiempo (T1, T2, T3)
+T1_w = real(-((t1_w)/(log(alfa1))));
+T2_w = real(-(t1_w)/(log(alfa2)));
+T3_w = Beta*(T1_w-T2_w)+(T1_w);
+
+% Función de transferencia identificada (G_w)
+s = tf("s");
+G_w = K_w/((s*T1_w + 1)*(s*T2_w + 1)); % Forma factorizada
+G_w_resp = step(2*G_w, t_ajustado); % Respuesta al escalón
+
+% Gráfico comparativo: Velocidad angular (Chen vs Original)
+figure;
+plot(t_ajustado, G_w_resp, 'r-', t_ajustado, w_ajustado, 'b-');
+title('Velocidad Angular respecto a Vin');
+xlabel('Tiempo (s)');
+ylabel('Vel. Angular (Rad/s)');
+legend('Inferida por el método de Chen', 'Original');
+grid on;
+
+% Método de Chen para la corriente en función del voltaje de entrada
+% (Proceso similar al anterior)
+
+t01 = 0.101; % Nuevo retardo
+indice1 = find(tt >= 0.101 & tt <= 0.7);
+t_ajustado1 = tt(indice1) - t01;
+ia_ajustado = ia(indice1);
+
+t_paso2 = 0.005;
+
+[~, lugar] = min(abs(t_paso2 + t01 - tt));
+y1_i = ia(lugar);
+t1_i = tt(lugar) - t01;
+
+[~, lugar] = min(abs(2*t1_i + t01 - tt));
+y2_i = ia(lugar);
+t2_i = tt(lugar) - t01;
+
+[~, lugar] = min(abs(3*t1_i + t01 - tt));
+y3_i = ia(lugar);
+t3_i = tt(lugar) - t01;
+
+% Normalización
+t4_i = 0.69;
+y4_i = 0.04;
+Ki = y4_i/2;
+
+% Cálculo de k1i, k2i, k3i
+k1i = ((y1_i/2)/Ki)-1;
+k2i = ((y2_i/2)/Ki)-1;
+k3i = ((y3_i/2)/Ki)-1;
+
+% Cálculo de bi
+bi = ((4)*(k1i^3)*(k3i))-((3)*(k1i^2)*(k2i^2))-((4)*(k2i^3))+(k3i^2)+((6)*(k1i)*(k2i)*(k3i));
+
+% Cálculo de alfa1i y alfa2i
+alfa1i = ((k1i*k2i)+(k3i)-(sqrt(bi)))/(2*((k1i^2)+(k2i)));
+alfa2i = ((k1i*k2i)+(k3i)+(sqrt(bi)))/(2*((k1i^2)+(k2i)));
+
+% Cálculo de Betai
+Betai = (k1i+alfa1i)*(alfa1i-alfa2i);
+
+% Cálculo de las constantes de tiempo (Ti)
+T1i = real(-t1_i/(log(alfa1i)));
+T2i = real(-t1_i/(log(alfa2i)));
+T3i = Betai*(T1i-T2i)+(T1i);
+
+% Función de transferencia identificada (G_i)
+G_i = Ki*(s*T3i + 1)/((s*T1i + 1)*(s*T2i + 1));
+G_i_resp = step(2*G_i, t_ajustado1); % Respuesta al escalón
+
+% Gráfico comparativo: Corriente de armadura (Chen vs Original)
+figure;
+plot(t_ajustado1, G_i_resp, 'r-', t_ajustado1, ia_ajustado, 'b-');
+title('Corriente de armadura respecto a Vin');
+xlabel('Tiempo (s)');
+ylabel('Corriente (A)');
+legend('Inferida por el método de Chen', 'Original');
+grid on;
